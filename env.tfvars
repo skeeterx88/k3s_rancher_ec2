@@ -1,0 +1,8 @@
+aws_access_key    = "AKIA5I35EK57RDC6DU5V"
+aws_secret_key    = "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"
+aws_region        = "us-east-1"
+aws_location      = "us-east-1a"
+aws_cidr          = "172.16.0.0/16"
+aws_subnet_cidr   = "172.16.10.0/24"
+aws_key_name      = "rancher"
+aws_instance_type = "t2.micro"

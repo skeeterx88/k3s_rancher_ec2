@@ -1,0 +1,105 @@
+- hosts: all
+  become: yes
+  tasks:
+    - name: Adicionar user kube
+      ansible.builtin.user:
+        name: kube
+        shell: /bin/bash
+        groups: sudo
+        append: yes
+        createhome: yes
+
+    - name: Adicionar kube ao sudoes
+      ansible.builtin.lineinfile:
+        dest: /etc/sudoers
+        line: 'kube ALL=(ALL) NOPASSWD: ALL'
+        validate: 'visudo -cf %s'
+
+    - name: Permitir que o kube acesse ssh 
+      ansible.posix.synchronize:
+        src: /root/.ssh
+        dest: /home/kube
+      delegate_to: "{{ inventory_hostname }}"
+
+    - name: Alterar dono da pasta /home/kube/.ssh
+      ansible.builtin.file:
+        path: /home/kube/.ssh
+        state: directory
+        recurse: yes
+        owner: kube
+        group: kube
+
+    - name: Update apt repositories
+      ansible.builtin.apt:
+        update_cache: yes          
+
+- hosts: master
+  become: yes
+  tasks:
+    - name: Download k3s install script
+      get_url:
+        url: https://get.k3s.io 
+        dest: /home/kube/k3s_install.sh
+        mode: a+x
+
+    - name: Execute k3s_install.sh
+      ansible.builtin.shell: INSTALL_K3S_EXEC="--flannel-iface=eth0 --disable traefik" /home/kube/k3s_install.sh >> /home/kube/k3s_install_log.txt
+      args:
+        chdir: /home/kube
+        creates: k3s_install_log.txt
+
+- hosts: master
+  become: yes
+  gather_facts: false
+  tasks:
+    - name: Get node token
+      shell: cat /var/lib/rancher/k3s/server/node-token
+      register: node_token_output
+
+    - name: Clean and add node_token to facts
+      set_fact:
+        node_token: "{{ node_token_output.stdout_lines[0] }}"
+
+- hosts: k3s
+  become: yes
+  tasks:
+    - name: Download k3s install script
+      get_url:
+        url: https://get.k3s.io
+        dest: /home/kube/k3s_install.sh
+        mode: a+x
+
+    - name: Join the cluster through the master node's private IP
+      shell: K3S_URL=https://"{{ hostvars['master'].private_ip_address }}":6443 K3S_TOKEN="{{ hostvars['master'].node_token }}" INSTALL_K3S_EXEC="--flannel-iface=eth0" /home/kube/k3s_install.sh >> worker_setup.txt
+      args:
+        chdir: /home/kube
+        creates: worker_setup.txt
+
+- hosts: master
+  gather_facts: false
+  become: yes
+  tasks:
+    - name: Create a directory ~/.kube/
+      ansible.builtin.file:
+        path: ~/.kube/
+        state: directory
+        mode: '0755'
+    - name: copy kubeconfig
+      ansible.builtin.copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: ~/.kube/config
+        remote_src: yes
+    - name: fetch kubeconfig
+      ansible.builtin.fetch:
+        src: ~/.kube/config
+        dest: ~/.kube/
+        flat: yes
+- hosts: localhost
+  tasks:        
+    - name: Ansible replace string example
+      replace:
+        path: ~/.kube/config
+        regexp: "127.0.0.1"
+        replace: "{{ hostvars['master'].public_ip_address }}"        
+        
+

@@ -1,0 +1,17 @@
+---
+plugin: aws_ec2
+aws_access_key: AKIA5I35EK57RDC6DU5V
+aws_secret_key: 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
+regions:
+  - us-east-1
+keyed_groups:
+  - key: tags.K3s
+    prefix: K3s
+filters:
+  instance-state-name: running
+hostnames:
+  - tag:Name
+  - instance-id
+  - public_ip_address
+compose:
+  ansible_host: public_ip_address
